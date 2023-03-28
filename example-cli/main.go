@@ -121,11 +121,11 @@ func main() {
 		fn = func(*netstat.SockTabEntry) bool { return true }
 	case *listening:
 		fn = func(s *netstat.SockTabEntry) bool {
-			return s.State == netstat.Listen
+			return s.RemoteEndpoint.Port == 0
 		}
 	default:
 		fn = func(s *netstat.SockTabEntry) bool {
-			return s.State != netstat.Listen
+			return s.RemoteEndpoint.Port != 0
 		}
 	}
 

@@ -128,11 +128,11 @@ func NoopFilter(s *SockTabEntry) bool {
 }
 
 func ConnectedFilter(s *SockTabEntry) bool {
-    return s.State != Listen
+    return s.RemoteEndpoint.Port != 0
 }
 
 func ListeningFilter(s *SockTabEntry) bool {
-    return s.State == Listen
+    return s.RemoteEndpoint.Port == 0
 }
 ```
 
