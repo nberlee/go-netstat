@@ -50,7 +50,8 @@ func GetNetNsPids(netNSNames []string) (pidNetNS *map[uint32]string) {
 
 func getNetNsInodeFromBindMount(netNSNames []string) (inodes []string, err error) {
 	for _, netNSName := range netNSNames {
-		netNSPath := path.Join(NetNSPath, netNSName)
+		sanitizedNetNSName := path.Base(netNSName)
+		netNSPath := path.Join(NetNSPath, sanitizedNetNSName)
 
 		f, err := os.Open(netNSPath)
 		if err != nil {
@@ -78,7 +79,8 @@ func getNetNsInodeFromBindMount(netNSNames []string) (inodes []string, err error
 
 func getNetNsInodeFromSymlink(netNSNames []string) (inodes []string, err error) {
 	for _, netNSName := range netNSNames {
-		symlinkPath := path.Join(NetNSPath, netNSName)
+		sanitizedNetNSName := path.Base(netNSName)
+		symlinkPath := path.Join(NetNSPath, sanitizedNetNSName)
 
 		fileInfo, err := os.Stat(symlinkPath)
 		if err != nil {

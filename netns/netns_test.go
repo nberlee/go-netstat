@@ -221,6 +221,12 @@ func TestGetNetNsInodeFromSymlink(t *testing.T) {
 			expected:   nil,
 			wantErr:    false,
 		},
+		{
+			name:       "path exploits",
+			netNSNames: []string{"../netns1", "../netns2"},
+			expected:   expectedInodes,
+			wantErr:    false,
+		},
 	}
 
 	// Temporarily replace the NetNSPath global variable
