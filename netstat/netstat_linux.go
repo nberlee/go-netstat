@@ -50,8 +50,17 @@ const (
 	Closing
 )
 
-var fdProcess = make(map[uint64]*common.Process)
-var pidNetNS map[uint32]string
+type processData struct {
+	fdProcess map[uint64]*common.Process
+	pidNetNS  map[uint32]string
+}
+
+func newProcessData() *processData {
+	return &processData{
+		fdProcess: make(map[uint64]*common.Process),
+		pidNetNS:  make(map[uint32]string),
+	}
+}
 
 var skStates = [...]string{
 	"UNKNOWN",
@@ -137,7 +146,7 @@ func parseAddr(s string) (*SockEndpoint, error) {
 	return &SockEndpoint{IP: ip, Port: uint16(v)}, nil
 }
 
-func parseSockTab(reader io.Reader, accept AcceptFn, transport string, podPid uint32) ([]SockTabEntry, error) {
+func (pd *processData) parseSockTab(reader io.Reader, accept AcceptFn, transport string, podPid uint32) ([]SockTabEntry, error) {
 	scanner := bufio.NewScanner(reader)
 	scanner.Scan()
 
@@ -177,13 +186,13 @@ func parseSockTab(reader io.Reader, accept AcceptFn, transport string, podPid ui
 		}
 		entry.Transport = transport
 		if podPid != 0 {
-			if netNsName, ok := pidNetNS[podPid]; ok {
+			if netNsName, ok := pd.pidNetNS[podPid]; ok {
 				entry.NetNS = netNsName
 			} else {
 				entry.NetNS = strconv.Itoa(int(podPid))
 			}
 		}
-		entry.Process = fdProcess[entry.Inode]
+		entry.Process = pd.fdProcess[entry.Inode]
 		if accept(&entry) {
 			sockTab = append(sockTab, entry)
 		}
@@ -198,7 +207,9 @@ func parseSockTab(reader io.Reader, accept AcceptFn, transport string, podPid ui
 func Netstat(ctx context.Context, feature EnableFeatures, fn AcceptFn) ([]SockTabEntry, error) {
 	var err error
 
-	pids, err := mergePids(feature)
+	pd := newProcessData()
+
+	pids, err := pd.mergePids(feature)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +217,7 @@ func Netstat(ctx context.Context, feature EnableFeatures, fn AcceptFn) ([]SockTa
 	files := procFiles(feature, pids)
 
 	if feature.PID {
-		fdProcess, err = processes.GetProcessFDs(ctx)
+		pd.fdProcess, err = processes.GetProcessFDs(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -226,7 +237,7 @@ func Netstat(ctx context.Context, feature EnableFeatures, fn AcceptFn) ([]SockTa
 				chs[i] <- []SockTabEntry{}
 				return
 			default:
-				tabs, err := openFileStream(file, fn)
+				tabs, err := pd.openFileStream(file, fn)
 				if err != nil {
 					// Send an empty slice if there was an error.
 					chs[i] <- []SockTabEntry{}
@@ -252,7 +263,7 @@ func Netstat(ctx context.Context, feature EnableFeatures, fn AcceptFn) ([]SockTa
 	return combinedTabs, nil
 }
 
-func mergePids(feature EnableFeatures) (pids []string, err error) {
+func (pd *processData) mergePids(feature EnableFeatures) (pids []string, err error) {
 	if feature.AllNetNs {
 		netNsName, err := netns.GetNetNSNames()
 		if err != nil {
@@ -267,9 +278,8 @@ func mergePids(feature EnableFeatures) (pids []string, err error) {
 		feature.NetNsPids = []uint32{}
 	}
 
-	pidNetNS = map[uint32]string{}
 	if len(feature.NetNsName) > 0 {
-		pidNetNS = *netns.GetNetNsPids(feature.NetNsName)
+		pd.pidNetNS = *netns.GetNetNsPids(feature.NetNsName)
 	}
 
 	hostNetNsIndex := 0
@@ -277,7 +287,7 @@ func mergePids(feature EnableFeatures) (pids []string, err error) {
 		hostNetNsIndex = 1
 	}
 
-	lengthPids := len(pidNetNS) + len(feature.NetNsPids) + hostNetNsIndex
+	lengthPids := len(pd.pidNetNS) + len(feature.NetNsPids) + hostNetNsIndex
 	pids = make([]string, lengthPids)
 
 	if !feature.NoHostNetwork {
@@ -286,7 +296,7 @@ func mergePids(feature EnableFeatures) (pids []string, err error) {
 
 	netNsNameIndex := 0
 
-	for pid := range pidNetNS {
+	for pid := range pd.pidNetNS {
 		pids[netNsNameIndex+hostNetNsIndex] = strconv.Itoa(int(pid))
 		netNsNameIndex++
 	}
@@ -329,7 +339,7 @@ func procFiles(feature EnableFeatures, pids []string) (files []string) {
 	return files
 }
 
-func openFileStream(file string, fn AcceptFn) ([]SockTabEntry, error) {
+func (pd *processData) openFileStream(file string, fn AcceptFn) ([]SockTabEntry, error) {
 	f, err := os.Open(file)
 	if err != nil {
 		return nil, err
@@ -338,7 +348,7 @@ func openFileStream(file string, fn AcceptFn) ([]SockTabEntry, error) {
 	_, transport := path.Split(file)
 	podPid, _ := strconv.ParseUint(strings.Split(file, "/")[2], 10, 32)
 
-	tabs, err := parseSockTab(f, fn, transport, uint32(podPid))
+	tabs, err := pd.parseSockTab(f, fn, transport, uint32(podPid))
 	if err != nil {
 		return nil, err
 	}
