@@ -147,6 +147,15 @@ func parseAddr(s string) (*SockEndpoint, error) {
 }
 
 func (pd *processData) parseSockTab(reader io.Reader, accept AcceptFn, transport string, podPid uint32) ([]SockTabEntry, error) {
+	var netNsName string
+	var ok bool
+
+	if podPid > 0 {
+		netNsName, ok = pd.pidNetNS[podPid]
+		if !ok {
+			netNsName = strconv.Itoa(int(podPid))
+		}
+	}
 	scanner := bufio.NewScanner(reader)
 	scanner.Scan()
 
@@ -185,13 +194,7 @@ func (pd *processData) parseSockTab(reader io.Reader, accept AcceptFn, transport
 			return nil, err
 		}
 		entry.Transport = transport
-		if podPid != 0 {
-			if netNsName, ok := pd.pidNetNS[podPid]; ok {
-				entry.NetNS = netNsName
-			} else {
-				entry.NetNS = strconv.Itoa(int(podPid))
-			}
-		}
+		entry.NetNS = netNsName
 		entry.Process = pd.fdProcess[entry.Inode]
 		if accept(&entry) {
 			sockTab = append(sockTab, entry)
